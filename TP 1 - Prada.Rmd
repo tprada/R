@@ -1,0 +1,407 @@
+---
+title: "TP 1 - Prada"
+author: "Tadeo Prada"
+date: "29/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Librerias
+
+```{r Librerias, message=FALSE, warning=FALSE}
+library(dplyr) #tydiverse diferentes funciones de manipulación de datos
+library(ggplot2) #visualizacion
+library (AMR) #simplifica el análisis (para tablas)
+library(forcats) #permite ordenar mediante la función fct_reorder
+library(tidyverse) #incluye la mayoría de las nombradas
+library(funModeling)
+library(corrplot) #correlaciones
+library(forcats) #permite ordenar mediante la función fct_reorder
+library(rpart) #arboles
+library(rpart.plot) #arboles
+library(e1071)
+library(caret) #particiones
+library(fastDummies)
+library(class)
+library ("mice") #Para los missing
+library(nnet) #Redes neuronales
+library(NeuralNetTools) #graficos de redes
+library(RSNNS) #MLP
+library(randomForest)
+```
+
+## Abriendo el dataset
+
+```{r}
+data = read.csv("GamingStudy_data.csv")
+data$Cat <- ifelse(data$GAD_T < 5, "Normal", ifelse(data$GAD_T < 10, "Mild Anxiety", ifelse(data$GAD_T < 15, "Moderate anxiety", "Severe anxiety")))
+
+data$fun = ifelse(data$S..No. %in% data$S..No.[grep("having fun", data$whyplay)],1,0)
+data$relaxing = ifelse(data$S..No. %in% data$S..No.[grep("relaxing", data$whyplay)],1,0)
+data$improving = ifelse(data$S..No. %in% data$S..No.[grep("improving", data$whyplay)],1,0)
+data$winning = ifelse(data$S..No. %in% data$S..No.[grep("winning", data$whyplay)],1,0)
+data$other = ifelse(data$winning == 0 & data$improving == 0 & data$relaxing == 0 & data$fun == 0, 1,0)
+#data = data%>%
+#  dummy_cols(
+#    remove_selected_columns = T,
+#    select_columns = c('Work','Degree')
+#  ) #Demasiada cardinalidad :(
+dataf = data%>%
+  filter(Hours <24)
+dataf$whyplay = NULL
+```
+
+## Analizando las variables
+
+```{r}
+colores = c("#29274cff","#7e52a0ff","#d295bfff","#e6bccdff","#e8ebe4ff")
+```
+
+```{r}
+str(data)
+dim(data)
+head(data)
+df_status(data)
+```
+
+```{r}
+hist(data$Hours, col = colores, main = "Histograma pre Filtrado", xlab = "Horas", ylab = "Frecuencia")
+
+hist(dataf$Hours,col = colores, main = "Histograma post Filtrado", xlab = "Horas", ylab = "Frecuencia")
+```
+
+```{r}
+GAD = freq(dataf$GAD_T)
+colores21 = c("#e6bccdff","#e6bccdff","#e6bccdff","#e6bccdff","#e6bccdff","#d295bfff","#d295bfff","#d295bfff","#d295bfff","#d295bfff","#7e52a0ff","#7e52a0ff","#7e52a0ff","#7e52a0ff","#7e52a0ff","#29274cff","#29274cff","#29274cff","#29274cff","#29274cff","#29274cff","#29274cff")
+Nivel_Ansiedad = c("Normal","Normal","Normal","Normal","Normal","Bajo","Bajo","Bajo","Bajo","Bajo","Medio","Medio","Medio","Medio","Medio","Alto","Alto","Alto","Alto","Alto","Alto","Alto")
+GAD$var = as.integer(GAD$var)
+GAD%>%
+  ggplot() + geom_bar(aes(y=frequency, x = var, fill = Nivel_Ansiedad), stat = "identity") + ylab("Cantidad") + xlab("GAD Total") + scale_fill_manual(values = colores21)
+```
+
+```{r}
+#freq(dataf$whyplay)
+```
+
+```{r}
+gen = freq(dataf$Gender)
+  ggplot(gen, aes(x="", y = frequency, fill = var)) +
+  geom_bar(stat="identity", width=1, color = "white") +
+  coord_polar("y", start=0) + scale_fill_manual(values = colores)+ theme_void() 
+```
+
+```{r}
+hist(data$Age, col = colores, main = "Distribucion de la edad", xlab = "Edad", ylab = "Frecuencia")
+```
+
+```{r}
+trabajo = freq(dataf$Work)
+```
+
+```{r}
+pais =filter(dataf,Residence == "USA" |Residence == "Germany" |Residence == "Canada" |Residence == "UK" |Residence == "Netherlands" |Residence == "France" |Residence == "Sweden" |Residence == "Denmark" |Residence == "Portugal" |Residence == "Brazil")
+freq(pais$Degree)
+f1 = freq(pais$Residence)
+f1 = f1%>%
+  slice(1:15)
+
+```
+
+```{r}
+modo = freq(dataf$Playstyle)
+colnames(modo)[1]= "Modalidad de juego"
+colnames(modo)[2] = "Cantidad"
+modo%>%
+  slice(1:5)%>%
+  ggplot(aes(x=`Modalidad de juego`, y=Cantidad,fill = `Modalidad de juego`)) + 
+    geom_bar(stat="identity", alpha=1, width=.4) + scale_fill_manual(values = colores) + theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) 
+```
+
+```{r}
+freq(dataf$Game)
+```
+
+```{r}
+freq(dataf$earnings)
+```
+
+```{r}
+hist(dataf$GAD_T, col = c("#e6bccdff","#e6bccdff","#e6bccdff","#e6bccdff","#e6bccdff","#d295bfff","#d295bfff","#d295bfff","#d295bfff","#d295bfff","#7e52a0ff","#7e52a0ff","#7e52a0ff","#7e52a0ff","#7e52a0ff","#29274cff","#29274cff","#29274cff","#29274cff","#29274cff","#29274cff"), main = "Distribucion de los resultados del GAD", ylab= "Frecuencia", xlab = "Resultado")
+```
+
+```{r Correlaciones, message=FALSE, warning=FALSE}
+cor1 = select(dataf,GAD1,GAD2,GAD3,GAD4,GAD5,GAD6,GAD7,SWL1,SWL2,SWL3,SWL4,SWL5,Hours,streams,SPIN1,SPIN2,  SPIN3,  SPIN4,  SPIN5,SPIN6,  SPIN7,  SPIN8,  SPIN9,SPIN10, SPIN11, SPIN12, SPIN13,SPIN14, SPIN15, SPIN16, SPIN17,Narcissism,GAD_T,SWL_T,SPIN_T)
+colnames(dataf)
+corp = cor(cor1,method = "pearson", use = "complete.obs")
+corrplot(corp, method = "ellipse")
+cors = cor(cor1,method = "spearman", use = "complete.obs")
+corrplot(cors,method = "ellipse")
+```
+
+
+
+```{r Particiones, message=FALSE, warning=FALSE}
+datacat = dataf%>%
+  dplyr::select(SWL1, SWL2, SWL3, SWL4, SWL5, Hours, streams, SPIN1, SPIN2,  SPIN3, SPIN4, SPIN5,SPIN6, SPIN7, SPIN8, SPIN9, SPIN10, SPIN11, SPIN12, SPIN13, SPIN14, SPIN15, SPIN16, SPIN17, Narcissism, SWL_T, SPIN_T, fun, relaxing, improving, winning, other, Work, Degree, Cat)
+datacat = datacat%>%
+  dummy_cols(    remove_selected_columns = T,
+    select_columns = c('Work','Degree'))
+datacat = na.omit(datacat)
+set.seed(8);particion = createDataPartition(y = datacat$Cat, p = 0.7,list = FALSE)
+entrenamientoc = datacat[particion,]
+testeoc = datacat[-particion,]
+#str(entrenamientoc)
+#str(testeoc)
+#table(entrenamientoc$GAD_T)
+#table(testeoc$GAD_T)
+datagad = dataf%>%
+  dplyr::select(SWL1, SWL2, SWL3, SWL4, SWL5, Hours, streams, SPIN1, SPIN2,  SPIN3, SPIN4, SPIN5,SPIN6, SPIN7, SPIN8, SPIN9, SPIN10, SPIN11, SPIN12, SPIN13, SPIN14, SPIN15, SPIN16, SPIN17, Narcissism, SWL_T, SPIN_T, fun, relaxing, improving, winning, other, Work, Degree, GAD_T)
+datagad = datagad%>%
+  dummy_cols(    remove_selected_columns = T,
+    select_columns = c('Work','Degree'))
+datagad = na.omit(datagad)
+set.seed(8);particiong = createDataPartition(y = datagad$GAD_T, p = 0.7,list = FALSE)
+entrenamientog = datagad[particiong,]
+testeog = datagad[-particiong,]
+dataSinPsico = dataf%>%
+  dplyr::select(Hours, streams, Narcissism, fun, relaxing, improving, winning, other, Work, Degree, Cat)
+dataSinPsico = dataSinPsico%>%
+  dummy_cols(    remove_selected_columns = T,
+    select_columns = c('Work','Degree'))
+dataSinPsico = na.omit(dataSinPsico)
+set.seed(8);particionSP = createDataPartition(y = dataSinPsico$Cat, p = 0.7,list = FALSE)
+entrenamientoSP = dataSinPsico[particionSP,]
+testeoSP = dataSinPsico[-particionSP,]
+```
+
+```{r Severe Part, message=FALSE, warning=FALSE}
+catf = datacat
+catf$Cat = ifelse(catf$Cat == "Severe anxiety",1,0)
+set.seed(8);particionsevere = createDataPartition(y = catf$Cat, p = 0.7,list = FALSE)
+train = catf[particionsevere,]
+test = catf[-particionsevere,]
+library(ROSE)
+colnames(train) = c(1:43)
+train <- ovun.sample(33~., train, method = "both", N = 530)$data
+```
+
+
+```{r Arbol CAT, message=FALSE, warning=FALSE}
+arbol = rpart(Cat~.,entrenamientoc,method='class')
+pred = predict(arbol,testeoc,type='class')
+confarb = caret::confusionMatrix(table(pred,testeoc$Cat))
+confarb
+rpart.plot(arbol,extra=101,type = 4,cex = .6)
+```
+
+```{r Arbol GAD, message=FALSE, warning=FALSE}
+#MALARDO
+arbol2 = rpart(GAD_T~.,entrenamientog)
+preda2 = predict(arbol2,testeog)
+confarb2 = confusionMatrix(table(preda2,testeog$GAD_T))
+confarb2
+rpart.plot(arbol2,extra=101,type = 4,cex = .6)
+ECMa = mean((preda2-testeog$GAD_T)^2)
+ECMa
+```
+
+```{r Arbol Sin Psico, message=FALSE, warning=FALSE}
+#Malardo 2.0
+arbol3 = rpart(Cat~.,entrenamientoSP,method='class')
+pred3 = predict(arbol3,testeoSP,type='class')
+confarb3 = confusionMatrix(table(pred3,testeoSP$Cat))
+confarb3
+rpart.plot(arbol3,extra=101,type = 4,cex = .6)
+```
+
+
+```{r KNN, message=FALSE, warning=FALSE}
+for(i in 2:30){
+  knn = knn(train = entrenamientoc[,-33],
+             test = testeoc[,-33],
+             cl = entrenamientoc[,33],
+             k = i)
+conf = confusionMatrix(table(knn,testeoc$Cat))
+print(i)
+print(conf$overall[1])
+} #19 es el mejor
+knn = knn(train = entrenamientoc[,-33],
+             test = testeoc[,-33],
+             cl = entrenamientoc[,33],
+             k = 19)
+conf = confusionMatrix(table(knn,testeoc$Cat))
+conf
+pROC_obj <- roc(testeoc$Cat,knn,
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+```
+
+```{r Redes Neuronales, message=FALSE, warning=FALSE}
+set.seed(8);red = nnet(class.ind(Cat)~.,entrenamientoc,size = 10, maxit = 10000, MaxNWts = 5000)
+
+plotnet(red)
+predr = predict(red,testeoc)
+predr
+confusionMatrix(factor(predr),factor(testeoc$Cat))
+```
+
+```{r MLP RIP, message=FALSE, warning=FALSE}
+colnames(entrenamientog[33]) = "GAD"
+mlp(x = entrenamientog[,-33], y =entrenamientog[,33], maxit = 10000, size = c(5), initFunc = "Randomize_Weights", initFuncParams = c(-0.3, 0.3),
+  learnFunc = "Std_Backpropagation", learnFuncParams = c(0.2, 0),
+  updateFunc = "Topological_Order", updateFuncParams = c(0),
+  hiddenActFunc = "Act_Logistic", shufflePatterns = TRUE,
+  linOut = FALSE, inputsTest = NULL, targetsTest = NULL,
+  pruneFunc = NULL, pruneFuncParams = NULL)
+```
+
+```{r Naive Bayes, message=FALSE, warning=FALSE}
+#Si sirve
+nbg = naiveBayes(factor(GAD_T)~., entrenamientog)
+prednb = predict(nbg,testeog)
+confnb = caret::confusionMatrix(prednb,factor(testeog$GAD_T))
+confnb
+ECMnb = mean((prednb-testeog$GAD_T)^2)
+ECMnb
+```
+
+```{r Regresion, message=FALSE, warning=FALSE}
+reg = lm(GAD_T ~., data = entrenamientog)
+summary(reg)
+plot(reg)
+predr = predict(reg,testeog)
+ECMr = mean((predr-testeog$GAD_T)^2)
+ECMr
+```
+
+```{r SVM, message=FALSE, warning=FALSE}
+#entrenamientog$Work_NA = NULL
+
+svm=svm(factor(GAD_T)~.,entrenamientog,kernel="polynomial", cost = 0.5, gamma = 0.1)
+predSVM = predict(svm,testeog)
+confsmv = caret::confusionMatrix(table((predSVM),(testeog$GAD_T)))
+confsmv$overall[1]
+for(a in 1:10){
+ svm=svm(factor(GAD_T)~.,entrenamientog,kernel="linear", cost = a)
+predSVM = predict(svm,testeog)
+confsmv = caret::confusionMatrix(table((predSVM),(testeog$GAD_T)))
+print(a)
+print(confsmv$overall[1])
+}
+```
+
+```{r Random Forest}
+#for(num in c(1000,2000,3000,4000,5000,6000,7000,8000,9000,10000)){
+#bagg=randomForest(factor(Cat)~.,datacat,ntree=num)
+#CMBAGG = caret::confusionMatrix(bagg$predicted,factor(datacat$Cat))
+#print(num)
+#print(CMBAGG$overall[1])
+#}
+#plot(bagg)
+#varImpPlot(bagg)
+bagg=randomForest(factor(Cat)~.,datacat,ntree=3000)
+CMBAGG = caret::confusionMatrix(bagg$predicted,factor(datacat$Cat))
+CMBAGG
+pROC_obj <- roc(bagg$predicted,factor(datacat$Cat),
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+```
+
+```{r MLP, message=FALSE, warning=FALSE}
+set.seed(9)
+dfValues <- datacat[,-33]
+dfTargets <- decodeClassLabels(datacat[,33])
+df <- splitForTrainingAndTest(dfValues, dfTargets, ratio=0.15)
+df <- normTrainingAndTestSet(df)
+set.seed(9);model <- mlp(df$inputsTrain, df$targetsTrain, size=c(10,5), learnFunc="Quickprop", learnFuncParams=c(0.1, 2.0, 0.0001, 0.1),  maxit = 100, inputsTest=df$inputsTest, targetsTest=df$targetsTest) #100 100 (severe) 75 100 (acc)
+predictions <- predict(model,df$inputsTest)
+par(mfrow=c(2,2))
+plotROC(fitted.values(model)[,2], df$targetsTrain[,2])
+
+plotROC(predictions[,2], df$targetsTest[,2])
+
+conf1 = RSNNS::confusionMatrix(df$targetsTrain,fitted.values(model))
+conf2 = RSNNS::confusionMatrix(df$targetsTest,predictions)
+conf1
+#Mild Moderate Normal Severe
+sum(conf2)
+conf2
+model
+```
+
+```{r}
+library(pROC)
+pROC_obj <- roc(df$targetsTest[,2],predictions[,2],
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+
+
+sens.ci <- ci.se(pROC_obj)
++
+plot(sens.ci, type="shape", col="lightblue")
+## Warning in plot.ci.se(sens.ci, type = "shape", col = "lightblue"): Low
+## definition shape.
++
+plot(sens.ci, type="bars")
+
+
+```
+```{r}
+#Modelos solo Severe
+#Red
+set.seed(8);red = nnet(Cat~.,train,size = 20, maxit = 10000, MaxNWts = 5000)
+plotnet(red)
+redp = predict(red,test)
+caret::confusionMatrix(factor(redp),factor(test$Cat))
+pROC_obj <- roc(as.numeric(test$Cat),as.numeric(redp),
+            smoothed = TRUE,
+            # arguments for ci
+            ci=TRUE, ci.alpha=0.9, stratified=FALSE,
+            # arguments for plot
+            plot=TRUE, auc.polygon=TRUE, max.auc.polygon=TRUE, grid=TRUE,
+            print.auc=TRUE, show.thres=TRUE)
+#arbol
+arbol = rpart(Cat~.,train,method='class')
+arbolp = predict(arbol,test,type='class')
+confarb = caret::confusionMatrix(arbolp ,factor(test$Cat))
+confarb
+rpart.plot(arbol,extra=101,type = 4,cex = .6)
+#MLP
+set.seed(9)
+dfValues <- catf[,-33]
+dfTargets <- decodeClassLabels(catf[,33])
+df <- splitForTrainingAndTest(dfValues, dfTargets, ratio=0.15)
+df <- normTrainingAndTestSet(df)
+model <- mlp(df$inputsTrain, df$targetsTrain, size=150, learnFunc="Std_Backpropagation", learnFuncParams=c(0.1, 2.0, 0.0001, 0.1),  maxit = 10, inputsTest=df$inputsTest, targetsTest=df$targetsTest) #150 100 (severe) 75 100 (acc)
+predictions <- predict(model,df$inputsTest)
+par(mfrow=c(2,2))
+plotROC(fitted.values(model), df$targetsTrain)
+
+plotROC(predictions, df$targetsTest)
+
+conf1 = RSNNS::confusionMatrix(df$targetsTrain,fitted.values(model))
+conf2 = RSNNS::confusionMatrix(df$targetsTest,predictions)
+conf1
+#Mild Moderate Normal Severe
+sum(conf2)
+conf2
+model
+```
+
